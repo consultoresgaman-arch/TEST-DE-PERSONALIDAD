@@ -1,34 +1,36 @@
-import { NextResponse } from 'next/server';
+import { NextResponse } from "next/server";
 
-export async function POST(request: Request) {
+export async function POST(req: Request) {
   try {
-    const data = await request.json();
-    const { nombre, empresa, puesto } = data;
+    const body = await req.json();
+    const { nombre, cargo, respuestas } = body;
 
-    // Estructura del informe ejecutivo optimizado para la evaluación
-    const analysisResult = {
-      titulo: "Evaluación Ejecutiva C-Level",
-      perfil: {
-        nombre,
-        empresa,
-        puesto,
-        liderazgo: "Transformacional con alta orientación a la eficiencia operativa y gestión de equipos.",
-        tomaDeDecisiones: "Basada en análisis crítico y mitigación de riesgos bajo presión.",
-        competenciasClave: [
-          "Comunicación directiva y alineación estratégica",
-          "Gestión de relaciones y clima organizacional",
-          "Resolución de conflictos complejos"
-        ],
-        recomendaciones: [
-          "Fortalecer los espacios de retroalimentación estructurada con mandos medios.",
-          "Establecer métricas de seguimiento claras para mantener la cohesión del equipo."
-        ]
-      },
-      fecha: new Date().toLocaleDateString()
-    };
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("Falta configurar la llave de Gemini (GEMINI_API_KEY) en Vercel.");
+    }
 
-    return NextResponse.json(analysisResult);
-  } catch (error) {
-    return NextResponse.json({ error: 'Error al procesar el análisis' }, { status: 500 });
+    const prompt = `Actúa como un psicólogo experto en selección ejecutiva. Analiza las respuestas de este candidato para el cargo de ${cargo}.
+Nombre del candidato: ${nombre}
+
+Respuestas a la evaluación:
+${respuestas.map((r: string, i: number) => `Pregunta ${i + 1}: ${r || "Sin respuesta"}`).join("\n")}
+
+Por favor, proporciona un informe psicológico y ejecutivo detallado sobre su perfil de liderazgo, fortalezas y puntos de atención bajo presión.`;
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }]
+      })
+    });
+
+    const data = await response.json();
+    const analysis = data.candidates?.[0]?.content?.parts?.[0]?.text || "No se pudo generar el análisis automático.";
+
+    return NextResponse.json({ ok: true, analysis });
+  } catch (error: any) {
+    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 }
