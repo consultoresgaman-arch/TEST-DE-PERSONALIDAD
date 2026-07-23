@@ -7,7 +7,7 @@ export async function POST(req: Request) {
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      throw new Error("Falta configurar la llave de Gemini (GEMINI_API_KEY) en Vercel.");
+      return NextResponse.json({ ok: false, error: "Falta configurar la llave GEMINI_API_KEY en Vercel." }, { status: 500 });
     }
 
     const prompt = `Actúa como un psicólogo experto en selección ejecutiva. Analiza las respuestas de este candidato para el cargo de ${cargo}.
@@ -27,7 +27,15 @@ Por favor, proporciona un informe psicológico y ejecutivo detallado sobre su pe
     });
 
     const data = await response.json();
-    const analysis = data.candidates?.[0]?.content?.parts?.[0]?.text || "No se pudo generar el análisis automático.";
+
+    if (!response.ok) {
+      return NextResponse.json({ ok: false, error: data.error?.message || "Error al conectar con Google Gemini." }, { status: 500 });
+    }
+
+    const analysis = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!analysis) {
+      return NextResponse.json({ ok: false, error: "La inteligencia artificial no devolvió texto de respuesta." }, { status: 500 });
+    }
 
     return NextResponse.json({ ok: true, analysis });
   } catch (error: any) {
