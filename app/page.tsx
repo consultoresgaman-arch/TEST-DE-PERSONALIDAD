@@ -1,122 +1,233 @@
-'use client';
-import { useState, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
+"use client";
 
-export default function Home() {
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+
+const QUESTIONS = [
+  "¿Cómo se describiría a usted mismo cuando está en su mejor versión como líder y cuando está bajo presión?",
+  "En este momento, ¿cómo llega emocionalmente a esta entrevista y qué factores podrían estar afectando su rendimiento hoy?",
+  "Cuénteme una situación reciente de alta presión donde su resultado dependía de su capacidad para sostener criterio y equilibrio emocional. ¿Qué hizo exactamente?",
+  "Cuando un superior o un colaborador le cuestiona una decisión, ¿qué ocurre internamente en usted y cómo responde?",
+  "Describa un conflicto fuerte con un par o subordinado. ¿Qué hizo usted para resolverlo y qué aprendió?",
+  "¿Qué hace cuando siente ganas de responder de inmediato, corregir en público o tomar una decisión rápida por enojo?",
+  "¿Cómo organiza varias prioridades exigentes al mismo tiempo y qué suele pasar cuando se le acumulan tareas?",
+  "¿Qué tipo de tareas le exigen más concentración y qué estrategias usa para no distraerse o desconectarse?",
+  "¿Usted trabaja mejor con estructura o con flexibilidad? ¿Qué le ocurre cuando el entorno cambia abruptamente?",
+  "Si tuviera que describir su temperamento, ¿diría que es más colérico, sanguíneo, flemático o melancólico? Explique cómo se manifiesta eso en su liderazgo.",
+  "¿Qué límites no está dispuesto a cruzar, incluso si eso le hiciera ganar poder, dinero o aprobación?",
+  "Cuando algo no sale como espera, ¿qué patrón se activa en usted: insiste, se irrita, se bloquea o redefine el plan?",
+  "¿Le ha pasado tomar decisiones apresuradas y luego descubrir que faltaba información clave? ¿Cómo lo corrigió?",
+  "¿Su energía se mantiene estable durante jornadas largas o tiende a subir y bajar de forma marcada?",
+  "¿Cómo se relaciona con la autoridad cuando no está de acuerdo con una instrucción?",
+  "Cuando comete un error visible, ¿tiende a reconocerlo rápido o a justificarlo primero?",
+  "¿Qué hace con un colaborador talentoso pero emocionalmente difícil o inestable?",
+  "¿Cómo se da cuenta de que una persona de su equipo está desmotivada, saturada o en riesgo de caer en conflicto?",
+  "Cuando la organización le exige resultados muy agresivos, ¿qué hace para no sacrificar personas, cultura ni criterio?",
+  "¿Qué tipo de líder no le gustaría ser nunca, aunque lograra buenos resultados?",
+];
+
+export default function Page() {
   const searchParams = useSearchParams();
-  const [token, setToken] = useState('');
-  
-  const [step, setStep] = useState(1);
-  const [formData, setFormData] = useState({
-    nombre: '',
-    empresa: '',
-    puesto: '',
-    token: '',
-    respuestas: {
-      pregunta1: '',
-      pregunta2: ''
-    }
-  });
+  const [token, setToken] = useState("");
+
+  const [name, setName] = useState("");
+  const [role, setRole] = useState("");
+  const [answers, setAnswers] = useState<string[]>(Array(20).fill(""));
+  const [started, setStarted] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(18 * 60);
   const [loading, setLoading] = useState(false);
-  const [resultado, setResultado] = useState<any>(null);
-  const [errorMensaje, setErrorMensaje] = useState<string | null>(null);
+  const [analysis, setAnalysis] = useState("");
+  const [blocked, setBlocked] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
-    const tokenUrl = searchParams.get('token') || '';
+    const tokenUrl = searchParams.get("token") || "";
     setToken(tokenUrl);
-    setFormData(prev => ({ ...prev, token: tokenUrl }));
   }, [searchParams]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
+  useEffect(() => {
+    if (!started || blocked) return;
+    const t = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(t);
+          handleSubmit();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [started, blocked]);
 
-  const handleRespuestaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({
-      ...formData,
-      respuestas: {
-        ...formData.respuestas,
-        [e.target.name]: e.target.value
-      }
+  useEffect(() => {
+    const onBlur = () => {
+      if (started) setBlocked(true);
+    };
+    const onVis = () => {
+      if (document.visibilityState === "hidden" && started) setBlocked(true);
+    };
+    window.addEventListener("blur", onBlur);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("blur", onBlur);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [started]);
+
+  const timer = useMemo(() => {
+    const m = Math.floor(timeLeft / 60).toString().padStart(2, "0");
+    const s = (timeLeft % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
+  }, [timeLeft]);
+
+  const updateAnswer = (idx: number, value: string) => {
+    setAnswers((prev) => {
+      const copy = [...prev];
+      copy[idx] = value;
+      return copy;
     });
   };
 
-  const handleAnalyze = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleStart = () => {
+    if (!name.trim() || !role.trim()) return;
+    setStarted(true);
+  };
+
+  const handleSubmit = async () => {
+    if (loading) return;
     setLoading(true);
-    setErrorMensaje(null);
-
+    setErrorMessage("");
     try {
-      const res = await fetch('/api/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+      const resAnalyze = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nombre: name,
+          cargo: role,
+          respuestas: answers,
+          modo: "multi",
+          motor: "gemini",
+        }),
       });
-      const data = await res.json();
+      const dataAnalyze = await resAnalyze.json();
+      if (!dataAnalyze.ok) throw new Error(dataAnalyze.error || "Error analizando");
 
-      if (!res.ok) {
-        setErrorMensaje(data.error || 'Ocurrió un error');
-        setLoading(false);
-        return;
+      setAnalysis(dataAnalyze.analysis);
+
+      const resSave = await fetch("/api/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nombre_candidato: name,
+          cargo_postula: role,
+          respuestas: answers,
+          preanalisis_ia: dataAnalyze.analysis,
+          token: token,
+        }),
+      });
+      const dataSave = await resSave.json();
+      
+      if (!resSave.ok) {
+        throw new Error(dataSave.error || "Este enlace ya fue utilizado.");
       }
 
-      setResultado(data);
-      setStep(2);
-    } catch (error) {
-      setErrorMensaje('Hubo un error al procesar el envío.');
+    } catch (e: any) {
+      setErrorMessage(e.message);
     } finally {
       setLoading(false);
     }
   };
 
+  const blockPaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+  };
+
+  if (blocked) {
+    return (
+      <main style={{ padding: 40, fontFamily: "Arial", textAlign: "center" }}>
+        <h1 style={{ color: "#d9534f" }}>Evaluación Bloqueada</h1>
+        <p>La sesión se cerró por pérdida de foco de la ventana o intento de cambio de pestaña.</p>
+      </main>
+    );
+  }
+
+  if (errorMessage) {
+    return (
+      <main style={{ padding: 40, fontFamily: "Arial", textAlign: "center", maxWidth: 600, margin: "0 auto" }}>
+        <h1 style={{ color: "#d9534f" }}>Acceso denegado</h1>
+        <p style={{ background: "#f8d7da", color: "#721c24", padding: 20, borderRadius: 8, marginTop: 20 }}>
+          {errorMessage}
+        </p>
+      </main>
+    );
+  }
+
+  if (analysis) {
+    return (
+      <main style={{ padding: 40, fontFamily: "Arial", maxWidth: 900, margin: "0 auto" }}>
+        <h1>Resultado del análisis</h1>
+        <pre style={{ whiteSpace: "pre-wrap", background: "#0f172a", color: "#e2e8f0", padding: 20, borderRadius: 12 }}>
+          {analysis}
+        </pre>
+      </main>
+    );
+  }
+
   return (
-    <main style={{ maxWidth: '800px', margin: '40px auto', padding: '20px', fontFamily: 'sans-serif' }}>
-      <h1 style={{ color: '#1B2A38', textAlign: 'center' }}>Evaluación Ejecutiva y de Liderazgo</h1>
+    <main style={{ padding: 24, fontFamily: "Arial", maxWidth: 900, margin: "0 auto" }}>
+      <h1>Evaluación Ejecutiva y de Liderazgo</h1>
+      <p>Esta evaluación mide autenticidad, consistencia y criterio de liderazgo bajo presión temporal.</p>
 
-      {errorMensaje && (
-        <div style={{ background: '#F8D7DA', color: '#721C24', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #F5C6CB', textAlign: 'center', fontWeight: 'bold' }}>
-          {errorMensaje}
-        </div>
-      )}
-
-      {step === 1 ? (
-        <form onSubmit={handleAnalyze} style={{ background: '#fff', padding: '30px', borderRadius: '12px', boxShadow: '0 4px 15px rgba(0,0,0,0.05)' }}>
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>Nombre Completo:</label>
-            <input type="text" name="nombre" required value={formData.nombre} onChange={handleInputChange} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc' }} />
-          </div>
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>Empresa:</label>
-            <input type="text" name="empresa" required value={formData.empresa} onChange={handleInputChange} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc' }} />
-          </div>
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>Puesto Actual:</label>
-            <input type="text" name="puesto" required value={formData.puesto} onChange={handleInputChange} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc' }} />
-          </div>
-
-          <hr style={{ margin: '30px 0', border: '0', borderTop: '1px solid #eee' }} />
-
-          <h3 style={{ color: '#1B2A38', marginBottom: '15px' }}>Preguntas de Evaluación</h3>
-          
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>1. ¿Cómo manejas una situación de alta presión con tu equipo?</label>
-            <input type="text" name="pregunta1" required value={formData.respuestas.pregunta1} onChange={handleRespuestaChange} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc' }} />
-          </div>
-
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>2. ¿Cuál consideras que es tu mayor pilar de liderazgo?</label>
-            <input type="text" name="pregunta2" required value={formData.respuestas.pregunta2} onChange={handleRespuestaChange} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc' }} />
+      {!started ? (
+        <section style={{ background: "#f8fafc", padding: 20, borderRadius: 12, marginTop: 20 }}>
+          <input
+            placeholder="Nombre completo"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            style={{ width: "100%", padding: 12, marginBottom: 12, borderRadius: 6, border: "1px solid #ccc" }}
+          />
+          <input
+            placeholder="Cargo al que postula"
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            style={{ width: "100%", padding: 12, marginBottom: 12, borderRadius: 6, border: "1px solid #ccc" }}
+          />
+          <button onClick={handleStart} style={{ width: "100%", padding: 14, fontWeight: 700, background: "#FF6B00", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer" }}>
+            Comenzar evaluación
+          </button>
+        </section>
+      ) : (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSubmit();
+          }}
+        >
+          <div style={{ position: "sticky", top: 0, background: "#fff", padding: "15px 0", fontWeight: 700, borderBottom: "1px solid #eee", zIndex: 10 }}>
+            Tiempo restante: {timer}
           </div>
 
-          <button type="submit" disabled={loading} style={{ width: '100%', padding: '12px', background: '#FF6B00', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
-            {loading ? 'Guardando evaluación...' : 'Enviar Evaluación'}
+          {QUESTIONS.map((q, i) => (
+            <div key={i} style={{ marginBottom: 20, marginTop: 20 }}>
+              <label style={{ display: "block", marginBottom: 8, fontWeight: 700 }}>
+                {i + 1}. {q}
+              </label>
+              <textarea
+                value={answers[i]}
+                onChange={(e) => updateAnswer(i, e.target.value)}
+                onPaste={blockPaste}
+                required
+                rows={5}
+                style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #ccc" }}
+              />
+            </div>
+          ))}
+
+          <button type="submit" disabled={loading} style={{ width: "100%", padding: 14, fontWeight: 700, background: "#FF6B00", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer" }}>
+            {loading ? "Analizando..." : "Enviar evaluación"}
           </button>
         </form>
-      ) : (
-        <div style={{ background: '#fff', padding: '30px', borderRadius: '12px', boxShadow: '0 4px 15px rgba(0,0,0,0.05)', textAlign: 'center' }}>
-          <h2 style={{ color: '#28A745' }}>¡Evaluación enviada con éxito!</h2>
-          <p style={{ marginTop: '10px', color: '#555' }}>Gracias por completar el proceso, {formData.nombre}. Tus respuestas han sido registradas de forma segura.</p>
-        </div>
       )}
     </main>
   );
