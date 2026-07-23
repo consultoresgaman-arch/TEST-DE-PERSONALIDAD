@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
 
 const QUESTIONS = [
   "¿Cómo se describiría a usted mismo cuando está en su mejor versión como líder y cuando está bajo presión?",
@@ -15,7 +14,7 @@ const QUESTIONS = [
   "¿Usted trabaja mejor con estructura o con flexibilidad? ¿Qué le ocurre cuando el entorno cambia abruptamente?",
   "Si tuviera que describir su temperamento, ¿diría que es más colérico, sanguíneo, flemático o melancólico? Explique cómo se manifiesta eso en su liderazgo.",
   "¿Qué límites no está dispuesto a cruzar, incluso si eso le hiciera ganar poder, dinero o aprobación?",
-  "Cuando algo no sale como espera, ¿qué patrón se activa en usted: insiste, se irrita, se bloquea o redefine el plan?",
+  "Cuando algo no sale como espera, qué patrón se activa en usted: insiste, se irrita, se bloquea o redefine el plan?",
   "¿Le ha pasado tomar decisiones apresuradas y luego descubrir que faltaba información clave? ¿Cómo lo corrigió?",
   "¿Su energía se mantiene estable durante jornadas largas o tiende a subir y bajar de forma marcada?",
   "¿Cómo se relaciona con la autoridad cuando no está de acuerdo con una instrucción?",
@@ -27,9 +26,7 @@ const QUESTIONS = [
 ];
 
 export default function Page() {
-  const searchParams = useSearchParams();
   const [token, setToken] = useState("");
-
   const [name, setName] = useState("");
   const [role, setRole] = useState("");
   const [answers, setAnswers] = useState<string[]>(Array(20).fill(""));
@@ -41,9 +38,10 @@ export default function Page() {
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
-    const tokenUrl = searchParams.get("token") || "";
+    const params = new URLSearchParams(window.location.search);
+    const tokenUrl = params.get("token") || "";
     setToken(tokenUrl);
-  }, [searchParams]);
+  }, []);
 
   useEffect(() => {
     if (!started || blocked) return;
