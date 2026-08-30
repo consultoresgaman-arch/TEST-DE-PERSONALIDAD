@@ -2,50 +2,58 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { SECCIONES, TOTAL_PREGUNTAS } from "@/lib/questions";
 
-const QUESTIONS = [
-  "¿Cómo se describiría a usted mismo cuando está en su mejor versión como líder y cuando está bajo presión?",
-  "En este momento, ¿cómo llega emocionalmente a esta entrevista y qué factores podrían estar afectando su rendimiento hoy?",
-  "Cuénteme una situación reciente de alta presión donde su resultado dependía de su capacidad para sostener criterio y equilibrio emocional. ¿Qué hizo exactamente?",
-  "Cuando un superior o un colaborador le cuestiona una decisión, ¿qué ocurre internamente en usted y cómo responde?",
-  "Describa un conflicto fuerte con un par o subordinado. ¿Qué hizo usted para resolverlo y qué aprendió?",
-  "¿Qué hace cuando siente ganas de responder de inmediato, corregir en público o tomar una decisión rápida por enojo?",
-  "¿Cómo organiza varias prioridades exigentes al mismo tiempo y qué suele pasar cuando se le acumulan tareas?",
-  "¿Qué tipo de tareas le exigen más concentración y qué estrategias usa para no distraerse o desconectarse?",
-  "¿Usted trabaja mejor con estructura o con flexibilidad? ¿Qué le ocurre cuando el entorno cambia abruptamente?",
-  "Si tuviera que describir su temperamento, ¿diría que es más colérico, sanguíneo, flemático o melancólico? Explique cómo se manifiesta eso en su liderazgo.",
-  "¿Qué límites no está dispuesto a cruzar, incluso si eso le hiciera ganar poder, dinero o aprobación?",
-  "Cuando algo no sale como espera, qué patrón se activa en usted: insiste, se irrita, se bloquea o redefine el plan?",
-  "¿Le ha pasado tomar decisiones apresuradas y luego descubrir que faltaba información clave? ¿Cómo lo corrigió?",
-  "¿Su energía se mantiene estable durante jornadas largas o tiende a subir y bajar de forma marcada?",
-  "¿Cómo se relaciona con la autoridad cuando no está de acuerdo con una instrucción?",
-  "Cuando comete un error visible, ¿tiende a reconocerlo rápido o a justificarlo primero?",
-  "¿Qué hace con un colaborador talentoso pero emocionalmente difícil o inestable?",
-  "¿Cómo se da cuenta de que una persona de su equipo está desmotivada, saturada o en riesgo de caer en conflicto?",
-  "Cuando la organización le exige resultados muy agresivos, ¿qué hace para no sacrificar personas, cultura ni criterio?",
-  "¿Qué tipo de líder no le gustaría ser nunca, aunque lograra buenos resultados?",
-];
+const NAVY = "#0F172A";
+const ORANGE = "#FF6B00";
+const GRAY = "#64748b";
+
+function Logo({ size = 32 }: { size?: number }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <img src="/LOGO.png" alt="Gaman Global Consultores" style={{ height: size, width: "auto" }} />
+    </div>
+  );
+}
+
+function Card({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        background: "#ffffff",
+        padding: 40,
+        borderRadius: 16,
+        boxShadow: "0 4px 24px rgba(0,0,0,0.06)",
+        border: "1px solid #e2e8f0",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
 
 export default function Page() {
   const [token, setToken] = useState("");
+  const [step, setStep] = useState(0); // 0: bienvenida, 1: registro, 2: test, 3: resultado
+  const [seccionActual, setSeccionActual] = useState(0);
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [role, setRole] = useState("");
-  const [answers, setAnswers] = useState<string[]>(Array(20).fill(""));
+  const [consentimiento, setConsentimiento] = useState(false);
+  const [answers, setAnswers] = useState<string[]>(Array(TOTAL_PREGUNTAS).fill(""));
   const [started, setStarted] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(18 * 60);
+  const [timeLeft, setTimeLeft] = useState(75 * 60);
   const [loading, setLoading] = useState(false);
-  const [analysis, setAnalysis] = useState("");
   const [blocked, setBlocked] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const tokenUrl = params.get("token") || "";
-    setToken(tokenUrl);
+    setToken(params.get("token") || "");
   }, []);
 
   useEffect(() => {
-    if (!started || blocked) return;
+    if (!started || blocked || step !== 2) return;
     const t = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
@@ -57,14 +65,14 @@ export default function Page() {
       });
     }, 1000);
     return () => clearInterval(t);
-  }, [started, blocked]);
+  }, [started, blocked, step]);
 
   useEffect(() => {
     const onBlur = () => {
-      if (started) setBlocked(true);
+      if (started && step === 2) setBlocked(true);
     };
     const onVis = () => {
-      if (document.visibilityState === "hidden" && started) setBlocked(true);
+      if (document.visibilityState === "hidden" && started && step === 2) setBlocked(true);
     };
     window.addEventListener("blur", onBlur);
     document.addEventListener("visibilitychange", onVis);
@@ -72,7 +80,7 @@ export default function Page() {
       window.removeEventListener("blur", onBlur);
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, [started]);
+  }, [started, step]);
 
   const timer = useMemo(() => {
     const m = Math.floor(timeLeft / 60).toString().padStart(2, "0");
@@ -80,17 +88,68 @@ export default function Page() {
     return `${m}:${s}`;
   }, [timeLeft]);
 
-  const updateAnswer = (idx: number, value: string) => {
+  const offsets = useMemo(() => {
+    const arr: number[] = [];
+    let acc = 0;
+    for (const s of SECCIONES) {
+      arr.push(acc);
+      acc += s.preguntas.length;
+    }
+    return arr;
+  }, []);
+
+  const updateAnswer = (globalIdx: number, value: string) => {
     setAnswers((prev) => {
       const copy = [...prev];
-      copy[idx] = value;
+      copy[globalIdx] = value;
       return copy;
     });
   };
 
-  const handleStart = () => {
-    if (!name.trim() || !role.trim()) return;
+  const handleStartTest = () => {
+    if (!name.trim() || !role.trim()) {
+      setErrorMessage("Por favor, ingresa tu nombre completo y el cargo al que postulas.");
+      return;
+    }
+    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setErrorMessage("Ingresa un correo electrónico válido, es necesario para identificar tu evaluación.");
+      return;
+    }
+    if (!consentimiento) {
+      setErrorMessage("Debes aceptar el tratamiento de tus datos personales para continuar.");
+      return;
+    }
+    setErrorMessage("");
+    setStep(2);
+    setSeccionActual(0);
     setStarted(true);
+  };
+
+  const seccionCompleta = (idx: number) => {
+    const inicio = offsets[idx];
+    const fin = inicio + SECCIONES[idx].preguntas.length;
+    return answers.slice(inicio, fin).every((a) => a.trim().length > 0);
+  };
+
+  const handleNextSection = () => {
+    if (!seccionCompleta(seccionActual)) {
+      setErrorMessage("Responde todas las preguntas de esta sección antes de continuar.");
+      return;
+    }
+    setErrorMessage("");
+    if (seccionActual < SECCIONES.length - 1) {
+      setSeccionActual((s) => s + 1);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } else {
+      handleSubmit();
+    }
+  };
+
+  const handlePrevSection = () => {
+    if (seccionActual > 0) {
+      setSeccionActual((s) => s - 1);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   };
 
   const handleSubmit = async () => {
@@ -98,134 +157,262 @@ export default function Page() {
     setLoading(true);
     setErrorMessage("");
     try {
-      const resAnalyze = await fetch("/api/analyze", {
+      const res = await fetch("/api/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           nombre: name,
+          correo: email,
           cargo: role,
           respuestas: answers,
-          modo: "multi",
-          motor: "gemini",
+          consentimiento_datos: consentimiento,
+          token,
         }),
       });
-      const dataAnalyze = await resAnalyze.json();
-      if (!dataAnalyze.ok) throw new Error(dataAnalyze.error || "Error analizando");
 
-      setAnalysis(dataAnalyze.analysis);
-
-      const resSave = await fetch("/api/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nombre_candidato: name,
-          cargo_postula: role,
-          respuestas: answers,
-          preanalisis_ia: dataAnalyze.analysis,
-          token: token,
-        }),
-      });
-      const dataSave = await resSave.json();
-      
-      if (!resSave.ok) {
-        throw new Error(dataSave.error || "Este enlace ya fue utilizado.");
+      let data: any;
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error("El servidor no devolvió una respuesta válida.");
+      }
+      if (!res.ok || !data.ok) {
+        throw new Error(data?.error || "No se pudo procesar la evaluación.");
       }
 
+      setStep(3);
     } catch (e: any) {
-      setErrorMessage(e.message);
+      setErrorMessage(e.message || "Ocurrió un error inesperado.");
     } finally {
       setLoading(false);
     }
   };
 
-  const blockPaste = (e: React.ClipboardEvent) => {
+  const blockClipboard = (e: React.SyntheticEvent) => {
     e.preventDefault();
+  };
+
+  const shellStyle: React.CSSProperties = {
+    padding: "40px 20px",
+    fontFamily: "Arial, sans-serif",
+    maxWidth: 900,
+    margin: "0 auto",
+    background: "#f8fafc",
+    minHeight: "100vh",
+    boxSizing: "border-box",
   };
 
   if (blocked) {
     return (
-      <main style={{ padding: 40, fontFamily: "Arial", textAlign: "center" }}>
-        <h1 style={{ color: "#d9534f" }}>Evaluación Bloqueada</h1>
-        <p>La sesión se cerró por pérdida de foco de la ventana o intento de cambio de pestaña.</p>
+      <main style={{ ...shellStyle, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center" }}>
+        <Card>
+          <h1 style={{ color: "#d9534f", marginBottom: 15 }}>Evaluación bloqueada</h1>
+          <p style={{ color: "#475569", lineHeight: 1.6 }}>
+            La sesión se cerró por pérdida de foco de la ventana o intento de cambio de pestaña. Contacta a Gaman
+            Global Consultores si necesitas reiniciar tu evaluación.
+          </p>
+        </Card>
       </main>
     );
   }
 
-  if (errorMessage) {
+  if (step === 3) {
     return (
-      <main style={{ padding: 40, fontFamily: "Arial", textAlign: "center", maxWidth: 600, margin: "0 auto" }}>
-        <h1 style={{ color: "#d9534f" }}>Acceso denegado</h1>
-        <p style={{ background: "#f8d7da", color: "#721c24", padding: 20, borderRadius: 8, marginTop: 20 }}>
-          {errorMessage}
-        </p>
-      </main>
-    );
-  }
-
-  if (analysis) {
-    return (
-      <main style={{ padding: 40, fontFamily: "Arial", maxWidth: 900, margin: "0 auto" }}>
-        <h1>Resultado del análisis</h1>
-        <pre style={{ whiteSpace: "pre-wrap", background: "#0f172a", color: "#e2e8f0", padding: 20, borderRadius: 12 }}>
-          {analysis}
-        </pre>
+      <main style={{ ...shellStyle, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center" }}>
+        <Card>
+          <div style={{ marginBottom: 24 }}>
+            <Logo size={40} />
+          </div>
+          <h1 style={{ color: NAVY, marginBottom: 10 }}>Evaluación completada</h1>
+          <p style={{ color: GRAY, lineHeight: 1.6 }}>
+            Gracias, {name}. Tu evaluación fue registrada correctamente. Nuestro equipo la revisará y se
+            pondrá en contacto contigo según los siguientes pasos del proceso de selección.
+          </p>
+        </Card>
       </main>
     );
   }
 
   return (
-    <main style={{ padding: 24, fontFamily: "Arial", maxWidth: 900, margin: "0 auto" }}>
-      <h1>Evaluación Ejecutiva y de Liderazgo</h1>
-      <p>Esta evaluación mide autenticidad, consistencia y criterio de liderazgo bajo presión temporal.</p>
+    <main style={shellStyle}>
+      {step === 0 && (
+        <Card>
+          <div style={{ marginBottom: 20 }}>
+            <Logo size={48} />
+          </div>
 
-      {!started ? (
-        <section style={{ background: "#f8fafc", padding: 20, borderRadius: 12, marginTop: 20 }}>
-          <input
-            placeholder="Nombre completo"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            style={{ width: "100%", padding: 12, marginBottom: 12, borderRadius: 6, border: "1px solid #ccc" }}
-          />
-          <input
-            placeholder="Cargo al que postula"
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            style={{ width: "100%", padding: 12, marginBottom: 12, borderRadius: 6, border: "1px solid #ccc" }}
-          />
-          <button onClick={handleStart} style={{ width: "100%", padding: 14, fontWeight: 700, background: "#FF6B00", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer" }}>
-            Comenzar evaluación
+          <h1 style={{ color: NAVY, marginBottom: 10, fontSize: 28 }}>Evaluación Ejecutiva Profunda y de Liderazgo</h1>
+          <p style={{ color: "#475569", lineHeight: 1.6, marginBottom: 25, fontSize: 16 }}>
+            Evaluación exhaustiva que mide autenticidad, consistencia psicológica y criterio directivo. Duración
+            máxima sugerida: 75 minutos, organizada en {SECCIONES.length} secciones.
+          </p>
+
+          <div style={{ background: "#fef2f2", borderLeft: "4px solid #ef4444", padding: 20, borderRadius: 8, marginBottom: 30 }}>
+            <h3 style={{ color: "#991b1b", margin: "0 0 8px 0", fontSize: 16 }}>Advertencia importante de seguridad</h3>
+            <p style={{ color: "#7f1d1d", margin: 0, fontSize: 14, lineHeight: 1.6 }}>
+              Al ingresar a la evaluación, el sistema activará restricciones estrictas: no está permitido salir de la
+              pestaña, cambiar de ventana, ni copiar o pegar texto. Si el sistema detecta alguna de estas acciones, la
+              evaluación se bloqueará automáticamente.
+            </p>
+          </div>
+
+          <button
+            onClick={() => setStep(1)}
+            style={{ width: "100%", padding: 16, fontWeight: 700, background: ORANGE, color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 16 }}
+          >
+            Entrar al test
           </button>
-        </section>
-      ) : (
+        </Card>
+      )}
+
+      {step === 1 && (
+        <Card>
+          <div style={{ marginBottom: 20 }}>
+            <Logo size={40} />
+          </div>
+
+          <h1 style={{ color: NAVY, marginBottom: 10, fontSize: 28 }}>Registro del candidato</h1>
+          <p style={{ color: "#475569", lineHeight: 1.6, marginBottom: 25, fontSize: 16 }}>
+            Ingresa tus datos para iniciar oficialmente la evaluación.
+          </p>
+
+          {errorMessage && (
+            <div style={{ background: "#fef2f2", color: "#991b1b", padding: 12, borderRadius: 8, marginBottom: 16, fontSize: 14 }}>
+              {errorMessage}
+            </div>
+          )}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <input
+              placeholder="Nombre completo"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              style={{ width: "100%", padding: 14, borderRadius: 8, border: "1px solid #cbd5e1", boxSizing: "border-box", fontSize: 15 }}
+            />
+            <input
+              placeholder="Correo electrónico"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              style={{ width: "100%", padding: 14, borderRadius: 8, border: "1px solid #cbd5e1", boxSizing: "border-box", fontSize: 15 }}
+            />
+            <input
+              placeholder="Cargo al que postula"
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              style={{ width: "100%", padding: 14, borderRadius: 8, border: "1px solid #cbd5e1", boxSizing: "border-box", fontSize: 15 }}
+            />
+
+            <label style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: 13, color: "#475569", lineHeight: 1.5 }}>
+              <input
+                type="checkbox"
+                checked={consentimiento}
+                onChange={(e) => setConsentimiento(e.target.checked)}
+                style={{ marginTop: 3 }}
+              />
+              <span>
+                Autorizo a Gaman Global Consultores a tratar mis datos personales y las respuestas de esta evaluación
+                psicológica-laboral, incluyendo datos sensibles, con la finalidad exclusiva de este proceso de
+                selección, conforme a la Ley N.º 19.628 sobre Protección de la Vida Privada.
+              </span>
+            </label>
+
+            <button
+              onClick={handleStartTest}
+              style={{ width: "100%", padding: 16, fontWeight: 700, background: ORANGE, color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 16, marginTop: 10 }}
+            >
+              Iniciar test
+            </button>
+          </div>
+        </Card>
+      )}
+
+      {step === 2 && (
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            handleSubmit();
+            handleNextSection();
           }}
         >
-          <div style={{ position: "sticky", top: 0, background: "#fff", padding: "15px 0", fontWeight: 700, borderBottom: "1px solid #eee", zIndex: 10 }}>
-            Tiempo restante: {timer}
+          <div
+            style={{
+              position: "sticky",
+              top: 0,
+              background: "rgba(255,255,255,0.95)",
+              backdropFilter: "blur(5px)",
+              padding: "16px 24px",
+              fontWeight: 700,
+              borderBottom: "1px solid #e2e8f0",
+              zIndex: 10,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              borderRadius: "0 0 12px 12px",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.03)",
+              marginBottom: 24,
+            }}
+          >
+            <Logo size={20} />
+            <span style={{ color: NAVY, fontSize: 14, background: "#f1f5f9", padding: "6px 12px", borderRadius: 6 }}>
+              Sección {seccionActual + 1} de {SECCIONES.length}
+            </span>
+            <span style={{ color: NAVY, fontSize: 14, background: "#f1f5f9", padding: "6px 12px", borderRadius: 6 }}>
+              Tiempo restante: {timer}
+            </span>
           </div>
 
-          {QUESTIONS.map((q, i) => (
-            <div key={i} style={{ marginBottom: 20, marginTop: 20 }}>
-              <label style={{ display: "block", marginBottom: 8, fontWeight: 700 }}>
-                {i + 1}. {q}
-              </label>
-              <textarea
-                value={answers[i]}
-                onChange={(e) => updateAnswer(i, e.target.value)}
-                onPaste={blockPaste}
-                required
-                rows={5}
-                style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #ccc" }}
-              />
+          {errorMessage && (
+            <div style={{ background: "#fef2f2", color: "#991b1b", padding: 12, borderRadius: 8, marginBottom: 16, fontSize: 14 }}>
+              {errorMessage}
             </div>
-          ))}
+          )}
 
-          <button type="submit" disabled={loading} style={{ width: "100%", padding: 14, fontWeight: 700, background: "#FF6B00", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer" }}>
-            {loading ? "Analizando..." : "Enviar evaluación"}
-          </button>
+          <h2 style={{ color: NAVY, marginBottom: 16 }}>{SECCIONES[seccionActual].titulo}</h2>
+
+          {SECCIONES[seccionActual].preguntas.map((q, localIdx) => {
+            const globalIdx = offsets[seccionActual] + localIdx;
+            return (
+              <div key={globalIdx} style={{ background: "#ffffff", padding: 28, borderRadius: 16, marginBottom: 24, boxShadow: "0 2px 12px rgba(0,0,0,0.04)", border: "1px solid #e2e8f0" }}>
+                <label style={{ display: "block", marginBottom: 12, fontWeight: 700, color: NAVY, fontSize: 16, lineHeight: 1.5 }}>
+                  <span style={{ color: ORANGE, marginRight: 8 }}>{globalIdx + 1}.</span> {q}
+                </label>
+                <textarea
+                  value={answers[globalIdx]}
+                  onChange={(e) => updateAnswer(globalIdx, e.target.value)}
+                  onCopy={blockClipboard}
+                  onCut={blockClipboard}
+                  onPaste={blockClipboard}
+                  required
+                  rows={5}
+                  placeholder="Escriba su respuesta de forma clara y detallada..."
+                  style={{ width: "100%", padding: 14, borderRadius: 8, border: "1px solid #cbd5e1", boxSizing: "border-box", fontSize: 15, lineHeight: 1.5, resize: "vertical", fontFamily: "Arial, sans-serif" }}
+                />
+              </div>
+            );
+          })}
+
+          <div style={{ display: "flex", gap: 12 }}>
+            {seccionActual > 0 && (
+              <button
+                type="button"
+                onClick={handlePrevSection}
+                style={{ flex: 1, padding: 16, fontWeight: 700, background: "#e2e8f0", color: NAVY, border: "none", borderRadius: 10, cursor: "pointer", fontSize: 16 }}
+              >
+                Sección anterior
+              </button>
+            )}
+            <button
+              type="submit"
+              disabled={loading}
+              style={{ flex: 2, padding: 18, fontWeight: 700, background: ORANGE, color: "#fff", border: "none", borderRadius: 10, cursor: "pointer", fontSize: 16, boxShadow: "0 4px 14px rgba(255,107,0,0.3)" }}
+            >
+              {loading
+                ? "Analizando perfil y generando reporte..."
+                : seccionActual < SECCIONES.length - 1
+                ? "Siguiente sección"
+                : "Enviar evaluación"}
+            </button>
+          </div>
         </form>
       )}
     </main>

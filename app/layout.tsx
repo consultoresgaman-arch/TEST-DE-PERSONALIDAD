@@ -1,6 +1,7 @@
 export const metadata = {
-  title: "Evaluación Ejecutiva y de Liderazgo",
+  title: "Evaluación Ejecutiva y de Liderazgo | Gaman Global Consultores",
   description: "Evaluación de Inteligencia Emocional y Liderazgo",
+  icons: { icon: "/LOGO.png" },
 };
 
 export default function RootLayout({
