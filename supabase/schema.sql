@@ -57,6 +57,8 @@ create table if not exists evaluaciones (
   analisis_cualitativo jsonb,          -- { miedosNucleares, patronesRepetitivos, temperamento, patronesCognitivosSensoriales }
   compatibilidad_pct numeric,          -- 0-100, solo si la evaluacion estaba ligada a un perfil_id
   compatibilidad_detalle jsonb,        -- desglose por dimension (minimo vs obtenido)
+  escalas_validadas jsonb,             -- resultados TIPI/WLEIS/BRS/CBI/MC-SDS-13 (ver lib/liderazgo/escalas.ts)
+  hipotesis jsonb,                     -- [{ hipotesis, pregunta_entrevista }]
 
   consentimiento_datos boolean not null default false,
   consentimiento_fecha timestamptz,
@@ -72,6 +74,8 @@ alter table evaluaciones add column if not exists resumen_ejecutivo text;
 alter table evaluaciones add column if not exists perfil_id uuid references perfiles_deseados(id) on delete set null;
 alter table evaluaciones add column if not exists compatibilidad_pct numeric;
 alter table evaluaciones add column if not exists compatibilidad_detalle jsonb;
+alter table evaluaciones add column if not exists escalas_validadas jsonb;
+alter table evaluaciones add column if not exists hipotesis jsonb;
 
 create index if not exists idx_evaluaciones_candidato on evaluaciones(candidato_id);
 create index if not exists idx_evaluaciones_created_at on evaluaciones(created_at);

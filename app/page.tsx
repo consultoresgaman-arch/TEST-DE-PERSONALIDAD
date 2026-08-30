@@ -3,10 +3,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { SECCIONES, TOTAL_PREGUNTAS } from "@/lib/questions";
+import { TIPI, WLEIS, BRS, CBI, MCSDS, opcionesDeItem } from "@/lib/liderazgo/escalas";
 
 const NAVY = "#0F172A";
 const ORANGE = "#FF6B00";
 const GRAY = "#64748b";
+
+const ESCALAS_ORDEN = [TIPI, WLEIS, BRS, CBI, MCSDS];
+
+function valoresIniciales(escala: any) {
+  return Array(escala.items.length).fill(null);
+}
 
 function Logo({ size = 32 }: { size?: number }) {
   return (
@@ -41,8 +48,13 @@ export default function Page() {
   const [role, setRole] = useState("");
   const [consentimiento, setConsentimiento] = useState(false);
   const [answers, setAnswers] = useState<string[]>(Array(TOTAL_PREGUNTAS).fill(""));
+  const [respuestasEscalas, setRespuestasEscalas] = useState<Record<string, (number | null)[]>>(() => {
+    const obj: Record<string, (number | null)[]> = {};
+    for (const e of ESCALAS_ORDEN) obj[e.id] = valoresIniciales(e);
+    return obj;
+  });
   const [started, setStarted] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(75 * 60);
+  const [timeLeft, setTimeLeft] = useState(90 * 60);
   const [loading, setLoading] = useState(false);
   const [blocked, setBlocked] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -98,10 +110,27 @@ export default function Page() {
     return arr;
   }, []);
 
+  const pasos = useMemo(() => {
+    const abiertos = SECCIONES.map((s, i) => ({ tipo: "abierta" as const, seccion: s, offset: offsets[i] }));
+    const escalas = ESCALAS_ORDEN.map((e) => ({ tipo: "escala" as const, escala: e }));
+    return [...abiertos, ...escalas];
+  }, [offsets]);
+
+  const totalPasos = pasos.length;
+  const pasoActual = pasos[seccionActual];
+
   const updateAnswer = (globalIdx: number, value: string) => {
     setAnswers((prev) => {
       const copy = [...prev];
       copy[globalIdx] = value;
+      return copy;
+    });
+  };
+
+  const updateEscala = (key: string, idx: number, value: number) => {
+    setRespuestasEscalas((prev) => {
+      const copy = { ...prev, [key]: [...prev[key]] };
+      copy[key][idx] = value;
       return copy;
     });
   };
@@ -125,19 +154,23 @@ export default function Page() {
     setStarted(true);
   };
 
-  const seccionCompleta = (idx: number) => {
-    const inicio = offsets[idx];
-    const fin = inicio + SECCIONES[idx].preguntas.length;
-    return answers.slice(inicio, fin).every((a) => a.trim().length > 0);
+  const pasoCompleto = (idx: number) => {
+    const paso = pasos[idx];
+    if (paso.tipo === "abierta") {
+      const inicio = paso.offset;
+      const fin = inicio + paso.seccion.preguntas.length;
+      return answers.slice(inicio, fin).every((a) => a.trim().length > 0);
+    }
+    return respuestasEscalas[paso.escala.id].every((v) => v !== null);
   };
 
   const handleNextSection = () => {
-    if (!seccionCompleta(seccionActual)) {
-      setErrorMessage("Responde todas las preguntas de esta sección antes de continuar.");
+    if (!pasoCompleto(seccionActual)) {
+      setErrorMessage("Responde todos los ítems de esta sección antes de continuar.");
       return;
     }
     setErrorMessage("");
-    if (seccionActual < SECCIONES.length - 1) {
+    if (seccionActual < totalPasos - 1) {
       setSeccionActual((s) => s + 1);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } else {
@@ -165,6 +198,7 @@ export default function Page() {
           correo: email,
           cargo: role,
           respuestas: answers,
+          escalas: respuestasEscalas,
           consentimiento_datos: consentimiento,
           token,
         }),
@@ -243,8 +277,9 @@ export default function Page() {
 
           <h1 style={{ color: NAVY, marginBottom: 10, fontSize: 28 }}>Evaluación Ejecutiva Profunda y de Liderazgo</h1>
           <p style={{ color: "#475569", lineHeight: 1.6, marginBottom: 25, fontSize: 16 }}>
-            Evaluación exhaustiva que mide autenticidad, consistencia psicológica y criterio directivo. Duración
-            máxima sugerida: 75 minutos, organizada en {SECCIONES.length} secciones.
+            Evaluación exhaustiva que mide autenticidad, consistencia psicológica y criterio directivo, incluyendo
+            instrumentos de personalidad validados. Duración máxima sugerida: 90 minutos, organizada en {totalPasos}{" "}
+            secciones.
           </p>
 
           <div style={{ background: "#fef2f2", borderLeft: "4px solid #ef4444", padding: 20, borderRadius: 8, marginBottom: 30 }}>
@@ -327,7 +362,7 @@ export default function Page() {
         </Card>
       )}
 
-      {step === 2 && (
+      {step === 2 && pasoActual && (
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -354,7 +389,7 @@ export default function Page() {
           >
             <Logo size={20} />
             <span style={{ color: NAVY, fontSize: 14, background: "#f1f5f9", padding: "6px 12px", borderRadius: 6 }}>
-              Sección {seccionActual + 1} de {SECCIONES.length}
+              Sección {seccionActual + 1} de {totalPasos}
             </span>
             <span style={{ color: NAVY, fontSize: 14, background: "#f1f5f9", padding: "6px 12px", borderRadius: 6 }}>
               Tiempo restante: {timer}
@@ -367,29 +402,68 @@ export default function Page() {
             </div>
           )}
 
-          <h2 style={{ color: NAVY, marginBottom: 16 }}>{SECCIONES[seccionActual].titulo}</h2>
-
-          {SECCIONES[seccionActual].preguntas.map((q, localIdx) => {
-            const globalIdx = offsets[seccionActual] + localIdx;
-            return (
-              <div key={globalIdx} style={{ background: "#ffffff", padding: 28, borderRadius: 16, marginBottom: 24, boxShadow: "0 2px 12px rgba(0,0,0,0.04)", border: "1px solid #e2e8f0" }}>
-                <label style={{ display: "block", marginBottom: 12, fontWeight: 700, color: NAVY, fontSize: 16, lineHeight: 1.5 }}>
-                  <span style={{ color: ORANGE, marginRight: 8 }}>{globalIdx + 1}.</span> {q}
-                </label>
-                <textarea
-                  value={answers[globalIdx]}
-                  onChange={(e) => updateAnswer(globalIdx, e.target.value)}
-                  onCopy={blockClipboard}
-                  onCut={blockClipboard}
-                  onPaste={blockClipboard}
-                  required
-                  rows={5}
-                  placeholder="Escriba su respuesta de forma clara y detallada..."
-                  style={{ width: "100%", padding: 14, borderRadius: 8, border: "1px solid #cbd5e1", boxSizing: "border-box", fontSize: 15, lineHeight: 1.5, resize: "vertical", fontFamily: "Arial, sans-serif" }}
-                />
-              </div>
-            );
-          })}
+          {pasoActual.tipo === "abierta" ? (
+            <>
+              <h2 style={{ color: NAVY, marginBottom: 16 }}>{pasoActual.seccion.titulo}</h2>
+              {pasoActual.seccion.preguntas.map((q, localIdx) => {
+                const globalIdx = pasoActual.offset + localIdx;
+                return (
+                  <div key={globalIdx} style={{ background: "#ffffff", padding: 28, borderRadius: 16, marginBottom: 24, boxShadow: "0 2px 12px rgba(0,0,0,0.04)", border: "1px solid #e2e8f0" }}>
+                    <label style={{ display: "block", marginBottom: 12, fontWeight: 700, color: NAVY, fontSize: 16, lineHeight: 1.5 }}>
+                      <span style={{ color: ORANGE, marginRight: 8 }}>{globalIdx + 1}.</span> {q}
+                    </label>
+                    <textarea
+                      value={answers[globalIdx]}
+                      onChange={(e) => updateAnswer(globalIdx, e.target.value)}
+                      onCopy={blockClipboard}
+                      onCut={blockClipboard}
+                      onPaste={blockClipboard}
+                      required
+                      rows={5}
+                      placeholder="Escriba su respuesta de forma clara y detallada..."
+                      style={{ width: "100%", padding: 14, borderRadius: 8, border: "1px solid #cbd5e1", boxSizing: "border-box", fontSize: 15, lineHeight: 1.5, resize: "vertical", fontFamily: "Arial, sans-serif" }}
+                    />
+                  </div>
+                );
+              })}
+            </>
+          ) : (
+            <>
+              <h2 style={{ color: NAVY, marginBottom: 4 }}>{pasoActual.escala.nombre}</h2>
+              <p style={{ color: GRAY, fontSize: 13, marginBottom: 16 }}>{pasoActual.escala.instrucciones}</p>
+              {pasoActual.escala.items.map((item: string, idx: number) => (
+                <div key={idx} style={{ background: "#ffffff", padding: 24, borderRadius: 16, marginBottom: 20, boxShadow: "0 2px 12px rgba(0,0,0,0.04)", border: "1px solid #e2e8f0" }}>
+                  <label style={{ display: "block", marginBottom: 14, fontWeight: 700, color: NAVY, fontSize: 15, lineHeight: 1.5 }}>
+                    {idx + 1}. {item}
+                  </label>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                    {opcionesDeItem(pasoActual.escala, idx).map((op) => {
+                      const seleccionado = respuestasEscalas[pasoActual.escala.id][idx] === op.valor;
+                      return (
+                        <button
+                          type="button"
+                          key={op.valor}
+                          onClick={() => updateEscala(pasoActual.escala.id, idx, op.valor)}
+                          style={{
+                            padding: "10px 14px",
+                            borderRadius: 8,
+                            fontSize: 13,
+                            cursor: "pointer",
+                            border: seleccionado ? `2px solid ${ORANGE}` : "1px solid #cbd5e1",
+                            background: seleccionado ? "#fff3e6" : "#fff",
+                            color: seleccionado ? ORANGE : "#475569",
+                            fontWeight: seleccionado ? 700 : 400,
+                          }}
+                        >
+                          {op.etiqueta}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
 
           <div style={{ display: "flex", gap: 12 }}>
             {seccionActual > 0 && (
@@ -408,7 +482,7 @@ export default function Page() {
             >
               {loading
                 ? "Analizando perfil y generando reporte..."
-                : seccionActual < SECCIONES.length - 1
+                : seccionActual < totalPasos - 1
                 ? "Siguiente sección"
                 : "Enviar evaluación"}
             </button>

@@ -9,6 +9,7 @@ import {
   type AnalisisCualitativo,
   type ResultadoCompatibilidad,
 } from "./scoring";
+import type { ResultadoEscala } from "./liderazgo/escalas";
 
 export interface InformeEmailData {
   nombre: string;
@@ -23,6 +24,8 @@ export interface InformeEmailData {
   resumenEjecutivo: string;
   cualitativo: AnalisisCualitativo;
   compatibilidad?: ResultadoCompatibilidad | null;
+  escalasValidadas?: ResultadoEscala[];
+  hipotesis?: { hipotesis: string; pregunta_entrevista: string }[];
   pdfBuffer: Buffer;
 }
 
@@ -60,6 +63,14 @@ function construirCuerpoTexto(data: InformeEmailData): string {
   }
   lineas.push("");
 
+  if (data.escalasValidadas && data.escalasValidadas.length > 0) {
+    lineas.push("Instrumentos de personalidad validados:");
+    for (const e of data.escalasValidadas) {
+      lineas.push(`  - ${e.nombre}: ${e.puntaje}/${e.puntajeMaximo} (${e.nivel})`);
+    }
+    lineas.push("");
+  }
+
   if (data.alertas.length > 0) {
     lineas.push("Alertas:");
     for (const a of data.alertas) {
@@ -87,6 +98,15 @@ function construirCuerpoTexto(data: InformeEmailData): string {
   lineas.push("Observaciones cognitivas y sensoriales (descriptivo, no diagnóstico):");
   lineas.push(data.cualitativo.patronesCognitivosSensoriales);
   lineas.push("");
+
+  if (data.hipotesis && data.hipotesis.length > 0) {
+    lineas.push("Hipótesis de trabajo (no diagnósticas):");
+    for (const h of data.hipotesis) {
+      lineas.push(`  - ${h.hipotesis}`);
+      lineas.push(`    Para contrastar en entrevista: ${h.pregunta_entrevista}`);
+    }
+    lineas.push("");
+  }
 
   lineas.push("--- Análisis clínico completo ---");
   lineas.push(data.analisisIA);

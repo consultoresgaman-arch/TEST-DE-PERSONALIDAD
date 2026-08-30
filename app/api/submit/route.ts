@@ -15,6 +15,18 @@ import { construirPrompt, llamarGroq, normalizarTexto } from "@/lib/groq";
 import { generarReportePDF } from "@/lib/pdf";
 import { enviarInformePorCorreo } from "@/lib/email";
 import { getSupabaseAdmin, logErrorSistema } from "@/lib/supabase";
+import {
+  TIPI,
+  WLEIS,
+  BRS,
+  CBI,
+  MCSDS,
+  puntuarTIPI,
+  puntuarWLEIS,
+  puntuarBRS,
+  puntuarCBI,
+  puntuarMCSDS,
+} from "@/lib/liderazgo/escalas";
 
 export const maxDuration = 60;
 
@@ -23,8 +35,16 @@ interface SubmitBody {
   correo?: unknown;
   cargo?: unknown;
   respuestas?: unknown;
+  escalas?: unknown;
   consentimiento_datos?: unknown;
   token?: unknown;
+}
+
+function numeros(arr: unknown, esperado: number): number[] | null {
+  if (!Array.isArray(arr) || arr.length !== esperado) return null;
+  const nums = arr.map((v) => Number(v));
+  if (nums.some((n) => !Number.isFinite(n))) return null;
+  return nums;
 }
 
 function validarBody(body: SubmitBody) {
@@ -48,7 +68,26 @@ function validarBody(body: SubmitBody) {
   }
   if (!consentimiento) return { error: "Falta el consentimiento de tratamiento de datos." };
 
-  return { nombre, correo, cargo, respuestas: respuestasLimpias, consentimiento, token };
+  const escalasBody = (body.escalas && typeof body.escalas === "object" ? body.escalas : {}) as Record<string, unknown>;
+  const tipi = numeros(escalasBody.tipi, TIPI.items.length);
+  const wleis = numeros(escalasBody.wleis, WLEIS.items.length);
+  const brs = numeros(escalasBody.brs, BRS.items.length);
+  const cbi = numeros(escalasBody.cbi, CBI.items.length);
+  const mcsds = numeros(escalasBody.mcsds, MCSDS.items.length);
+
+  if (!tipi || !wleis || !brs || !cbi || !mcsds) {
+    return { error: "Faltan respuestas de alguno de los instrumentos de personalidad (TIPI, WLEIS, BRS, CBI, MC-SDS)." };
+  }
+
+  return {
+    nombre,
+    correo,
+    cargo,
+    respuestas: respuestasLimpias,
+    consentimiento,
+    token,
+    escalasRespuestas: { tipi, wleis, brs, cbi, mcsds },
+  };
 }
 
 export async function POST(req: Request) {
@@ -65,7 +104,7 @@ export async function POST(req: Request) {
     if ("error" in datos) {
       return NextResponse.json({ ok: false, error: datos.error }, { status: 400 });
     }
-    const { nombre, correo, cargo, respuestas, consentimiento, token } = datos;
+    const { nombre, correo, cargo, respuestas, consentimiento, token, escalasRespuestas } = datos;
     correoLog = correo;
 
     const supabase = getSupabaseAdmin();
@@ -124,7 +163,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Falta configurar la llave GROQ_API_KEY en el servidor." }, { status: 500 });
     }
 
-    const prompt = construirPrompt(nombre, cargo, respuestas);
+    // --- Puntuar instrumentos de personalidad validados ---------------------
+    const resultadoTIPI = puntuarTIPI(escalasRespuestas.tipi);
+    const resultadoWLEIS = puntuarWLEIS(escalasRespuestas.wleis);
+    const resultadoBRS = puntuarBRS(escalasRespuestas.brs);
+    const resultadoCBI = puntuarCBI(escalasRespuestas.cbi);
+    const resultadoMCSDS = puntuarMCSDS(escalasRespuestas.mcsds);
+    const escalasValidadas = [resultadoTIPI, resultadoWLEIS, resultadoBRS, resultadoCBI, resultadoMCSDS];
+
+    const prompt = construirPrompt(nombre, cargo, respuestas, escalasValidadas);
 
     let parsed;
     try {
@@ -152,6 +199,13 @@ export async function POST(req: Request) {
     const resumenEjecutivo = typeof parsed.resumen_ejecutivo === "string" && parsed.resumen_ejecutivo.trim()
       ? normalizarTexto(parsed.resumen_ejecutivo)
       : "";
+
+    const hipotesis = Array.isArray(parsed.hipotesis)
+      ? parsed.hipotesis
+          .filter((h: any) => h && typeof h.hipotesis === "string" && h.hipotesis.trim() && typeof h.pregunta_entrevista === "string")
+          .map((h: any) => ({ hipotesis: h.hipotesis.trim(), pregunta_entrevista: h.pregunta_entrevista.trim() }))
+          .slice(0, 6)
+      : [];
 
     // Si la invitacion traia un perfil deseado ligado, calcula compatibilidad.
     let compatibilidad: ReturnType<typeof calcularCompatibilidad> | null = null;
@@ -205,6 +259,8 @@ export async function POST(req: Request) {
       analisis_ia: analisis,
       resumen_ejecutivo: resumenEjecutivo,
       analisis_cualitativo: cualitativo,
+      escalas_validadas: escalasValidadas,
+      hipotesis,
       compatibilidad_pct: compatibilidad?.porcentaje ?? null,
       compatibilidad_detalle: compatibilidad?.detalle ?? null,
       consentimiento_datos: consentimiento,
@@ -248,6 +304,8 @@ export async function POST(req: Request) {
         resumenEjecutivo,
         cualitativo,
         compatibilidad,
+        escalasValidadas,
+        hipotesis,
       });
 
       await enviarInformePorCorreo({
@@ -263,6 +321,8 @@ export async function POST(req: Request) {
         resumenEjecutivo,
         cualitativo,
         compatibilidad,
+        escalasValidadas,
+        hipotesis,
         pdfBuffer,
       });
     } catch (envioError: any) {

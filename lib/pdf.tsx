@@ -13,6 +13,7 @@ import {
   type AnalisisCualitativo,
   type ResultadoCompatibilidad,
 } from "./scoring";
+import type { ResultadoEscala } from "./liderazgo/escalas";
 
 const COLOR_NAVY = "#0F172A";
 const COLOR_ORANGE = "#FF6B00";
@@ -47,6 +48,11 @@ const styles = StyleSheet.create({
   paragraph: { fontSize: 9.5, lineHeight: 1.6, color: "#1e293b", marginBottom: 4 },
   resumenBox: { backgroundColor: "#fff7ed", borderLeft: `3px solid ${COLOR_ORANGE}`, padding: 14, borderRadius: 6, marginBottom: 10 },
   resumenTitle: { fontSize: 10, fontWeight: 700, color: COLOR_NAVY, marginBottom: 6, textTransform: "uppercase" },
+  escalaBarLabel: { width: 220, fontSize: 9, color: COLOR_NAVY },
+  escalaBarValue: { width: 150, textAlign: "right", fontSize: 8.5, color: COLOR_GRAY },
+  hipotesisBox: { backgroundColor: "#fff7ed", borderLeft: `3px solid ${COLOR_ORANGE}`, padding: 10, borderRadius: 4, marginBottom: 8 },
+  hipotesisTexto: { fontSize: 9.5, color: "#7c2d12", lineHeight: 1.5, marginBottom: 4 },
+  hipotesisPregunta: { fontSize: 9, color: COLOR_GRAY, fontStyle: "italic", lineHeight: 1.4 },
   disclaimer: { fontSize: 7.5, color: COLOR_GRAY, marginTop: 24, borderTop: `1px solid ${COLOR_BORDER}`, paddingTop: 8, lineHeight: 1.5 },
   footer: { position: "absolute", bottom: 20, left: 40, right: 40, fontSize: 7.5, color: COLOR_GRAY, textAlign: "center", borderTop: `1px solid ${COLOR_BORDER}`, paddingTop: 6 },
 });
@@ -65,6 +71,8 @@ export interface ReporteData {
   resumenEjecutivo: string;
   cualitativo: AnalisisCualitativo;
   compatibilidad?: ResultadoCompatibilidad | null;
+  escalasValidadas?: ResultadoEscala[];
+  hipotesis?: { hipotesis: string; pregunta_entrevista: string }[];
 }
 
 function Barra({ label, valor }: { label: string; valor: number }) {
@@ -75,6 +83,19 @@ function Barra({ label, valor }: { label: string; valor: number }) {
         <View style={[styles.barFill, { width: `${valor}%` }]} />
       </View>
       <Text style={styles.barValue}>{valor}</Text>
+    </View>
+  );
+}
+
+function BarraEscala({ escala }: { escala: ResultadoEscala }) {
+  const pct = escala.puntajeMaximo > 0 ? Math.min(100, (escala.puntaje / escala.puntajeMaximo) * 100) : 0;
+  return (
+    <View style={styles.barRow}>
+      <Text style={styles.escalaBarLabel}>{escala.nombre}</Text>
+      <View style={styles.barTrack}>
+        <View style={[styles.barFill, { width: `${pct}%` }]} />
+      </View>
+      <Text style={styles.escalaBarValue}>{escala.puntaje}/{escala.puntajeMaximo} · {escala.nivel}</Text>
     </View>
   );
 }
@@ -167,6 +188,15 @@ function ReportePDF({ data }: { data: ReporteData }) {
           <Barra key={d} label={DIMENSION_LABELS[d]} valor={data.puntajes[d]} />
         ))}
 
+        {!!data.escalasValidadas && data.escalasValidadas.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>Instrumentos de personalidad validados</Text>
+            {data.escalasValidadas.map((e) => (
+              <BarraEscala key={e.id} escala={e} />
+            ))}
+          </>
+        )}
+
         {data.alertas.length > 0 && (
           <>
             <Text style={styles.sectionTitle}>Alertas a considerar</Text>
@@ -221,6 +251,18 @@ function ReportePDF({ data }: { data: ReporteData }) {
               Nota: observación puramente descriptiva, sin valor diagnóstico. No constituye ni sugiere una
               condición clínica, discapacidad o trastorno.
             </Text>
+          </>
+        )}
+
+        {!!data.hipotesis && data.hipotesis.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>Hipótesis de trabajo (no diagnósticas)</Text>
+            {data.hipotesis.map((h, i) => (
+              <View key={i} style={styles.hipotesisBox}>
+                <Text style={styles.hipotesisTexto}>{h.hipotesis}</Text>
+                <Text style={styles.hipotesisPregunta}>Para contrastar en entrevista: {h.pregunta_entrevista}</Text>
+              </View>
+            ))}
           </>
         )}
 

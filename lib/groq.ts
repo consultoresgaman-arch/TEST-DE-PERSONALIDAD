@@ -1,5 +1,6 @@
 import { QUESTIONS, SECCIONES, TOTAL_PREGUNTAS } from "./questions";
 import { DIMENSIONES, DIMENSION_LABELS, TEMPERAMENTOS } from "./scoring";
+import type { ResultadoEscala } from "./liderazgo/escalas";
 
 const GROQ_MODEL = "openai/gpt-oss-120b";
 
@@ -12,7 +13,15 @@ export interface IAParsed {
   patrones_repetitivos?: unknown;
   temperamento?: unknown;
   patrones_cognitivos_sensoriales?: unknown;
+  hipotesis?: unknown;
 }
+
+const FUENTES_ESCALAS_LIDERAZGO = `- TIPI (Gosling, Rentfrow & Swann, 2003): perfil Big Five (1-7 por dimensión), sin punto de corte clínico.
+- WLEIS (Wong & Law, 2002): inteligencia emocional en 4 subescalas (1-7), sin punto de corte clínico.
+- BRS (Smith et al., 2008): resiliencia percibida — <3 baja, 3-4.3 normal, >4.3 alta.
+- CBI subescala personal (Kristensen et al., 2005): ≥50/100 sugiere agotamiento personal elevado.
+- MC-SDS-13 (Reynolds, 1982): deseabilidad social — ≥9/13 alta, 5-8 moderada, <5 baja.
+Cita estas fuentes tal cual si es relevante; no inventes otros puntos de corte.`;
 
 function construirBloqueRespuestas(respuestas: string[]): string {
   const bloques: string[] = [];
@@ -27,9 +36,19 @@ function construirBloqueRespuestas(respuestas: string[]): string {
   return bloques.join("\n\n");
 }
 
-export function construirPrompt(nombre: string, cargo: string, respuestas: string[]): string {
+function construirBloqueEscalasValidadas(escalas: ResultadoEscala[]): string {
+  return escalas.map((e) => `- ${e.nombre}: ${e.puntaje}/${e.puntajeMaximo} (${e.nivel})`).join("\n");
+}
+
+export function construirPrompt(
+  nombre: string,
+  cargo: string,
+  respuestas: string[],
+  escalasValidadas: ResultadoEscala[] = []
+): string {
   const bloqueRespuestas = construirBloqueRespuestas(respuestas);
   const listaDimensiones = DIMENSIONES.map((d) => `- ${d}: ${DIMENSION_LABELS[d]}`).join("\n");
+  const bloqueEscalasValidadas = construirBloqueEscalasValidadas(escalasValidadas);
 
   return `Eres un psicólogo clínico y organizacional de altísima precisión analítica, contratado por Gaman Global Consultores para evaluar candidatos ejecutivos. Tu trabajo no es resumir lo que el candidato dijo: es descifrar lo que sus respuestas revelan que él mismo probablemente no percibe conscientemente. Es un informe interno para el equipo de selección; el candidato nunca lo verá.
 
@@ -37,8 +56,14 @@ Tono obligatorio: clínico, analítico, directo, basado en evidencia textual con
 
 No te quedes en lo literal. Interpreta la intención detrás de cada respuesta: qué evita decir, dónde se contradice entre distintas preguntas, qué está racionalizando o minimizando, y qué patrón emocional se repite aunque el candidato no lo nombre.
 
+Puntos de referencia de los instrumentos de personalidad validados (para que tu análisis sea preciso, no solo descriptivo):
+${FUENTES_ESCALAS_LIDERAZGO}
+
 Candidato: ${nombre}
 Cargo evaluado: ${cargo}
+
+Puntajes de instrumentos de personalidad validados (ya calculados; cruza estos datos con las respuestas abiertas, especialmente si hay contradicción entre lo que el candidato relata y lo que estos instrumentos muestran):
+${bloqueEscalasValidadas}
 
 Respuestas del candidato (${TOTAL_PREGUNTAS} preguntas abiertas, organizadas por sección temática):
 
@@ -50,15 +75,22 @@ Tarea: devuelve EXCLUSIVAMENTE un JSON válido (sin markdown, sin texto fuera de
   "puntajes": {
 ${DIMENSIONES.map((d) => `    "${d}": <entero 0-100>`).join(",\n")}
   },
-  "deseabilidad_social_ia": <entero 0-100, tu propia estimación de cuánto el candidato podría estar respondiendo de forma idealizada en vez de describir su conducta real>,
+  "deseabilidad_social_ia": <entero 0-100, tu propia estimación de cuánto el candidato podría estar respondiendo de forma idealizada en vez de describir su conducta real — cruza esto con el puntaje del MC-SDS-13>,
   "miedos_nucleares": [<2 a 5 strings breves, en español, con los miedos de fondo que emergen del conjunto de respuestas — no lo que el candidato dice temer literalmente en una sola respuesta, sino el patrón que se repite entre varias>],
   "patrones_repetitivos": "<1-2 párrafos describiendo bucles de pensamiento o conducta que se repiten a través de distintas respuestas: qué gatilla el patrón, cómo se manifiesta, y cómo se resuelve o no se resuelve>",
   "temperamento": {
     "dominante": "<una sola palabra, exactamente una de: ${TEMPERAMENTOS.join(", ")}>",
-    "justificacion": "<1 párrafo explicando por qué, citando ejemplos concretos de las respuestas>"
+    "justificacion": "<1 párrafo explicando por qué, citando ejemplos concretos de las respuestas. Menciona también cómo se relaciona (o contradice) con el perfil TIPI ya calculado.>"
   },
   "patrones_cognitivos_sensoriales": "<1 párrafo puramente descriptivo sobre atención sostenida, sensibilidad a estímulos (ruido, caos, interrupciones) y necesidad de estructura vs. flexibilidad. ESTRICTAMENTE PROHIBIDO usar cualquier término diagnóstico, clínico o de discapacidad (ej: TDAH, autismo, espectro, neurodivergente, trastorno, condición). Describe únicamente el patrón observable, nunca una etiqueta ni una sugerencia de diagnóstico.>",
-  "analisis": "<informe clínico de 7 a 10 párrafos en español, tono profesional y directo, sin bullets, que cubra: (1) qué revela el patrón general de respuestas sobre su funcionamiento psicológico real; (2) estabilidad emocional y autocontrol bajo presión con ejemplos concretos; (3) relación con la autoridad y manejo de conflicto; (4) evidencia concreta de su aptitud para liderar equipos, citando específicamente las respuestas sobre delegación, conflicto con colaboradores, decisiones difíciles sobre personas y qué tipo de líder rechaza ser; (5) autocrítica, resiliencia y relación con el error; (6) coherencia o contradicción entre lo que dice ser y lo que sus propias respuestas evidencian.>",
+  "hipotesis": [
+    {
+      "hipotesis": "<una hipótesis de trabajo incisiva sobre un patrón/mecanismo psicológico relevante para el cargo, anclada a evidencia concreta (una respuesta específica Pn y/o un puntaje de instrumento validado). Nunca una etiqueta diagnóstica.>",
+      "pregunta_entrevista": "<una pregunta concreta y específica que el entrevistador podría hacer para poner a prueba esa hipótesis puntual en la entrevista final>"
+    }
+    // 3 a 5 de estas, priorizando contradicciones entre lo que el candidato relata y lo que los instrumentos validados muestran
+  ],
+  "analisis": "<informe clínico de 7 a 10 párrafos en español, tono profesional y directo, sin bullets, que cubra: (1) qué revela el patrón general de respuestas sobre su funcionamiento psicológico real; (2) estabilidad emocional y autocontrol bajo presión con ejemplos concretos, cruzando con WLEIS y BRS; (3) relación con la autoridad y manejo de conflicto; (4) evidencia concreta de su aptitud para liderar equipos, citando específicamente las respuestas sobre delegación, conflicto con colaboradores, decisiones difíciles sobre personas y qué tipo de líder rechaza ser; (5) autocrítica, resiliencia y relación con el error; (6) riesgo de desgaste según el CBI y lo que el candidato relata sobre su energía; (7) coherencia o contradicción entre lo que dice ser, su perfil TIPI, y lo que sus propias respuestas evidencian.>",
   "resumen_ejecutivo": "<3 a 5 frases, escritas AL FINAL después de haber razonado todo lo anterior, que sinteticen para un reclutador con poco tiempo: el hallazgo psicológico más relevante, el temperamento y su implicancia práctica, la fortaleza y el riesgo más importantes, y una recomendación explícita (avanzar / avanzar con reserva y profundizar en entrevista / no avanzar) con el motivo central en una frase.>"
 }
 
